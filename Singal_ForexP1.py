@@ -13,9 +13,9 @@ st.markdown("""
     <style>
     @keyframes blink { 0% { opacity: 0.2; } 50% { opacity: 1; } 100% { opacity: 0.2; } }
     .live-dot { height: 10px; width: 10px; background-color: #00ffcc; border-radius: 50%; display: inline-block; animation: blink 1.5s infinite; box-shadow: 0 0 8px #00ffcc; }
-    .trading-card { border: 1px solid #2d2d2d; padding: 15px; border-radius: 12px; background-color: #111111; box-shadow: 2px 2px 10px rgba(0,0,0,0.5); }
-    .ticker-wrap { width: 100%; background: #1a1a1a; padding: 10px 0; border-top: 1px solid #ffcc00; border-bottom: 1px solid #ffcc00; overflow: hidden; margin-top: 20px; }
-    .ticker { display: inline-block; white-space: nowrap; padding-left: 100%; animation: ticker 25s linear infinite; font-weight: bold; color: #ffcc00; }
+    .trading-card { border: 1px solid #2d2d2d; padding: 20px; border-radius: 12px; background-color: #111111; box-shadow: 2px 2px 10px rgba(0,0,0,0.5); }
+    .ticker-wrap { width: 100%; background: #1a1a1a; padding: 10px 0; border-top: 1px solid #ff3366; border-bottom: 1px solid #ff3366; overflow: hidden; margin-top: 20px; }
+    .ticker { display: inline-block; white-space: nowrap; padding-left: 100%; animation: ticker 25s linear infinite; font-weight: bold; color: #ff3366; }
     @keyframes ticker { 0% { transform: translate3d(0, 0, 0); } 100% { transform: translate3d(-100%, 0, 0); } }
     
     /* Memaksa semua teks di dalam kartu premium berwarna putih cerah agar terbaca jelas */
@@ -25,7 +25,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- NAVIGATION SIDEBAR (FOKUS FOREX & GOLD) ---
+# --- NAVIGATION SIDEBAR ---
 st.sidebar.title("🎮 Main Navigation")
 st.sidebar.markdown("✨ **Mode Aktif:** `🦅 Forex & Gold Terminal`")
 st.sidebar.markdown("---")
@@ -66,6 +66,8 @@ def get_market_data(ticker, period, interval):
     if not df.empty:
         df['RSI'] = calculate_rsi(df['Close'])
         df['ATR'] = calculate_atr(df['High'], df['Low'], df['Close'])
+        # Tambahan Fitur 2: Menghitung Moving Average untuk deteksi Tren Makro
+        df['SMA_20'] = df['Close'].rolling(window=20).mean()
     return df
     
 pairs_mapping = {'XAU/USD (Gold)': 'GC=F', 'EUR/USD': 'EURUSD=X', 'GBP/USD': 'GBPUSD=X', 'USD/JPY': 'JPY=X', 'AUD/USD': 'AUDUSD=X'}
@@ -106,6 +108,20 @@ with st.spinner('🔮 Mensinkronisasi satelit forex...'):
         
 df_signals = pd.DataFrame(signals_data)
 
+# --- EXECUTIVE METRIC CARDS ---
+if not df_signals.empty:
+    buy_count = len(df_signals[df_signals["Action"].str.contains("BUY")])
+    sell_count = len(df_signals[df_signals["Action"].str.contains("SELL")])
+    
+    m1, m2, m3 = st.columns(3)
+    with m1:
+        st.metric(label="🟢 Total Peluang Akumulasi (BUY)", value=f"{buy_count} Aset", delta="Aset Diskon", delta_color="normal")
+    with m2:
+        st.metric(label="🔴 Total Distribusi Bahaya (SELL)", value=f"{sell_count} Aset", delta="Jenuh Beli", delta_color="inverse")
+    with m3:
+        st.metric(label="⚡ Volatilitas Pasar Terkini", value="Tinggi (ATR Active)", delta="Normal")
+    st.markdown("---")
+
 # TAMPILAN UTAMA FOREX
 st.write(f"### 🌡️ Alat Ukur Sentimen Pasar ({timeframe_label})")
 if not df_signals.empty:
@@ -116,7 +132,7 @@ if not df_signals.empty:
                 mode = "gauge+number", value = row["Score"], domain = {'x': [0, 1], 'y': [0, 1]},
                 title = {'text': f"<b>{row['Asset']}</b><br><span style='font-size:0.8em;color:gray'>{row['Action']}</span>", 'font': {'size': 14}},
                 gauge = {'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "white"}, 'bar': {'color': "#00ffcc" if "BUY" in row["Action"] else "#ff3366" if "SELL" in row["Action"] else "#ffcc00"}, 'bgcolor': "#2d2d2d", 'borderwidth': 2, 'bordercolor': "gray",
-                         'steps': [{'range': [0, 35], 'color': 'rgba(255, 51, 102, 0.3)'}, {'range': [35, 65], 'color': 'rgba(255, 204, 0, 0.2)'}, {'range': [65, 100], 'color': 'rgba(0, 255, 204, 0.3)'}]}
+                             'steps': [{'range': [0, 35], 'color': 'rgba(255, 51, 102, 0.3)'}, {'range': [35, 65], 'color': 'rgba(255, 204, 0, 0.2)'}, {'range': [65, 100], 'color': 'rgba(0, 255, 204, 0.3)'}]}
             ))
             fig_gauge.update_layout(height=180, margin=dict(l=10, r=10, t=40, b=10), template="plotly_dark")
             st.plotly_chart(fig_gauge, use_container_width=True)
@@ -139,7 +155,11 @@ if not df_signals.empty:
     
     left_col, right_col = st.columns([2, 1])
     with left_col:
+        # Modifikasi Grafik Candlestick dengan Garis SMA Eksklusif (Fitur 2)
         fig = go.Figure(data=[go.Candlestick(x=df_chart.index, open=df_chart['Open'], high=df_chart['High'], low=df_chart['Low'], close=df_chart['Close'], increasing_line_color='#00ffcc', decreasing_line_color='#ff3366', name='Candle')])
+        if 'SMA_20' in df_chart.columns:
+            fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart['SMA_20'], mode='lines', line=dict(color='#ffcc00', width=1.5), name='SMA 20 Trend'))
+            
         fig.update_layout(title=f"Grafik Candlestick Premium - {selected_asset}", xaxis_rangeslider_visible=False, height=450, template="plotly_dark")
         st.plotly_chart(fig, use_container_width=True)
         
@@ -148,11 +168,22 @@ if not df_signals.empty:
         if "WAIT" not in asset_info["Action"]:
             pips_to_sl = abs(asset_info["Price"] - asset_info["SL"])
             calculated_lot = risk_amount / (pips_to_sl * (100 if "XAU" in asset_info["Asset"] else 10000)) if pips_to_sl > 0 else 0.01
-            lot_output = f"`{round(max(calculated_lot, 0.01), 2)} Standard Lot`"
+            final_lot = max(calculated_lot, 0.01)
+            lot_output = f"`{round(final_lot, 2)} Standard Lot`"
             risk_money_output = f"`${round(risk_amount, 2)}`"
+            
+            pips_to_tp = abs(asset_info["TP"] - asset_info["Price"])
+            multiplier = 100 if "XAU" in asset_info["Asset"] else 10000
+            estimated_profit = final_lot * pips_to_tp * multiplier
+            profit_output = f"<span style='color: #00ffcc; font-weight: bold;'>+${round(estimated_profit, 2)} USD</span>"
+            
+            # Format teks rapi untuk disalin (Fitur 3)
+            share_text = f"🚨 ALPHA SIGNAL: {asset_info['Asset']} | ACTION: {asset_info['Action']}\\n📍 Entry: {asset_info['Price']}\\n🎯 Target TP: {asset_info['TP']}\\n🛡️ Batas SL: {asset_info['SL']}"
         else:
             lot_output = "*Tidak ada posisi aktif*"
             risk_money_output = "*Tidak ada risiko*"
+            profit_output = "*N/A*"
+            share_text = "Pasar masih konsolidasi (Wait & Watch)."
             
         st.markdown(f"""
         <div class='trading-card'>
@@ -164,15 +195,19 @@ if not df_signals.empty:
             <h4 style='color:#00ffcc;'>💡 Alasan Algoritma:</h4>
             <p>{asset_info['Reason']}</p>
             <hr style='border-color:#2d2d2d;'>
-            <h4 style='color:#ffcc00;'>🛡️ Manajemen Resiko:</h4>
-            <p><b>Uang Diresikoan:</b> {risk_money_output}</p>
+            <h4 style='color:#ffcc00;'>🛡️ Manajemen Resiko & Profit Proyeksi:</h4>
+            <p><b>Uang Diresikoan (Batas Rugi):</b> {risk_money_output}</p>
             <p><b>Volume Posisi:</b> <span style='color: #00ffcc;'>{lot_output}</span></p>
+            <p><b>Estimasi Keuntungan Jika Hit TP:</b> {profit_output}</p>
         </div>
         """, unsafe_allow_html=True)
+        
         if "WAIT" not in asset_info["Action"]:
             st.write("")
             st.success(f"🎯 **Target TP:** `{asset_info['TP']}`")
             st.error(f"🛡️ **Batas SL:** `{asset_info['SL']}`")
+            # Tombol Salin Sinyal Eksklusif (Fitur 3)
+            st.code(share_text.replace('\\n', '\n'), language="text")
             
 st.markdown("---")
 st.write("### 📜 Jurnal Historis Performa Algoritma")
@@ -181,4 +216,4 @@ mock_history = pd.DataFrame([
     {"Waktu Close": "Kemarin, 21:15", "Aset": "EUR/USD", "Tipe": "SELL", "Harga Entry": 1.0850, "Harga Close": 1.0892, "Hasil": "🟥 HIT STOP LOSS (-0.0042)"}
 ])
 st.dataframe(mock_history, use_container_width=True)
-st.markdown("<div class='ticker-wrap'><div class='ticker'>⚠️ BREAKING NEWS: Investor bersiap menghadapi rilis data inflasi AS malam ini --- 📈 Ketegangan geopolitik memicu kenaikan Emas (XAUUSD) ke level baru.</div></div>", unsafe_allow_html=True)
+st.markdown("<div class='ticker-wrap'><div class='ticker'>🔴 FLASH NEWS: Data ketenagakerjaan Non-Farm Payrolls (NFP) diprediksi memicu volatilitas ekstrim malam ini! Perketat Money Management.</div></div>", unsafe_allow_html=True)
