@@ -8,12 +8,17 @@ from datetime import datetime
 # 1. Konfigurasi Halaman Dashboard (Alpha Terminal Theme)
 st.set_page_config(page_title="Alpha Intelligence Forex Dashboard", layout="wide")
 
-# CSS Kustom untuk efek Glow, Animasi Berkedip, dan Desain Kartu
+# CSS Kustom untuk efek Glow, Animasi Berkedip, Teks Berjalan, dan Desain Kartu
 st.markdown("""
     <style>
     @keyframes blink { 0% { opacity: 0.2; } 50% { opacity: 1; } 100% { opacity: 0.2; } }
     .live-dot { height: 10px; width: 10px; background-color: #00ffcc; border-radius: 50%; display: inline-block; animation: blink 1.5s infinite; box-shadow: 0 0 8px #00ffcc; }
     .trading-card { border: 1px solid #2d2d2d; padding: 15px; border-radius: 12px; background-color: #111111; box-shadow: 2px 2px 10px rgba(0,0,0,0.5); }
+    
+    /* Style untuk Running Text Berita */
+    .ticker-wrap { width: 100%; background: #1a1a1a; padding: 10px 0; border-top: 1px solid #ffcc00; border-bottom: 1px solid #ffcc00; overflow: hidden; margin-top: 20px; }
+    .ticker { display: inline-block; white-space: nowrap; padding-left: 100%; animation: ticker 25s linear infinite; font-weight: bold; color: #ffcc00; }
+    @keyframes ticker { 0% { transform: translate3d(0, 0, 0); } 100% { transform: translate3d(-100%, 0, 0); } }
     </style>
     """, unsafe_allow_html=True)
 
@@ -29,6 +34,11 @@ timeframe_label = st.sidebar.selectbox(
     "Pilih Timeframe Analisis:",
     ["15 Menit (Scalping)", "1 Jam (Intraday)", "1 Hari (Swing)"]
 )
+
+# Tombol Refresh Manual untuk meramaikan kontrol interaksi
+if st.sidebar.button("🔄 Paksa Sinkronisasi Data"):
+    st.cache_data.clear()
+    st.sidebar.success("Data Pasar Berhasil Diperbarui!")
 
 st.sidebar.markdown("---")
 st.sidebar.header("🧮 Kalkulator Manajemen Risiko")
@@ -93,9 +103,7 @@ with st.spinner('🔮 Mensinkronisasi dengan satelit pasar global...'):
         rsi = round(latest['RSI'], 2) if not np.isnan(latest['RSI']) else 50.0
         atr = round(latest['ATR'], 2) if 'XAU' in pair_name or 'JPY' in pair_name else round(latest['ATR'], 4)
         
-        # Hitung persentase perubahan harian untuk Heatmap kekuatan mata uang
         daily_change = round(((latest['Close'] - prev_close) / prev_close) * 100, 2)
-        
         gauge_score = 100 - rsi 
         
         if rsi < 35:
@@ -149,7 +157,7 @@ for index, row in df_signals.iterrows():
 
 st.markdown("---")
 
-# 3. FITUR BARU: CURRENCY STRENGTH HEATMAP (Peta Kekuatan Pasar Hari Ini)
+# 3. CURRENCY STRENGTH HEATMAP
 st.write("### 📊 Peta Kekuatan Momentum Aset (Daily Performance Heatmap)")
 heatmap_cols = st.columns(len(df_signals))
 for index, row in df_signals.iterrows():
@@ -165,7 +173,7 @@ for index, row in df_signals.iterrows():
 
 st.markdown("---")
 
-# 4. RUANG ANALISIS TAKTIS, GRAFIK CANDLESTICK & RISK CALCULATOR OUTPUT
+# 4. RUANG ANALISIS TAKTIS, GRAFIK CANDLESTICK & RISK CALCULATOR
 st.write("### 🧠 Ruang Analisis Taktis & Alasan Posisi")
 selected_asset = st.selectbox("Pilih Aset untuk Analisis Visual Mendalam:", list(pairs_mapping.keys()))
 
@@ -187,17 +195,12 @@ with left_col:
     st.plotly_chart(fig, use_container_width=True)
 
 with right_col:
-    # Perhitungan Live dari Sektor Kalkulator Risiko di Sidebar
     risk_amount = (account_balance * risk_percentage) / 100
-    
     if "WAIT" not in asset_info["Action"]:
-        # Hitung jarak pips/poin dari entry ke SL untuk menentukan ukuran Lot aman
         pips_to_sl = abs(asset_info["Price"] - asset_info["SL"])
         if "XAU" in asset_info["Asset"]:
-            # Perhitungan khusus emas (Gold standar leverage kontrak)
             calculated_lot = risk_amount / (pips_to_sl * 100) if pips_to_sl > 0 else 0.01
         else:
-            # Perhitungan pasang mata uang forex biasa
             calculated_lot = risk_amount / (pips_to_sl * 10000) if pips_to_sl > 0 else 0.01
         lot_output = f"`{round(max(calculated_lot, 0.01), 2)} Standard Lot`"
         risk_money_output = f"`${round(risk_amount, 2)}`"
@@ -205,7 +208,6 @@ with right_col:
         lot_output = "*Tidak ada posisi aktif*"
         risk_money_output = "*Tidak ada risiko*"
 
-    # Tampilan Kartu Informasi Finansial
     st.markdown(f"""
     <div class='trading-card' style='color: #ffffff; background-color: #161616; padding: 20px; border-radius: 12px; border: 1px solid #2d2d2d;'>
         <h3 style='margin-top:0; color: #ffffff;'>📋 Dokumen Analisis {selected_asset}</h3>
@@ -228,3 +230,24 @@ with right_col:
         st.error(f"🛡️ **Batas Toleransi Risiko (Stop Loss):** `{asset_info['SL']}`")
     else:
         st.info("⚡ *Sistem menyarankan mode pemantauan saja (No Action Required).*")
+
+st.markdown("---")
+
+# 5. FITUR BARU: TABEL RIWAYAT TRANSAKSI (MOCK TRADING LOG)
+st.write("### 📜 Jurnal Historis Performa Algoritma (Mock Trading Ledger)")
+mock_history = pd.DataFrame([
+    {"Waktu Close": "Hari Ini, 05:30", "Aset": "XAU/USD (Gold)", "Tipe": "BUY", "Harga Entry": 2340.20, "Harga Close": 2355.80, "Hasil": "🟩 HIT TAKE PROFIT (+15.60)"},
+    {"Waktu Close": "Kemarin, 21:15", "Aset": "EUR/USD", "Tipe": "SELL", "Harga Entry": 1.0850, "Harga Close": 1.0892, "Hasil": "🟥 HIT STOP LOSS (-0.0042)"},
+    {"Waktu Close": "Kemarin, 14:00", "Aset": "GBP/USD", "Tipe": "BUY", "Harga Entry": 1.2640, "Harga Close": 1.2720, "Hasil": "🟩 HIT TAKE PROFIT (+0.0080)"},
+    {"Waktu Close": "2 Hari Lalu", "Aset": "USD/JPY", "Tipe": "SELL", "Harga Entry": 157.40, "Harga Close": 156.10, "Hasil": "🟩 HIT TAKE PROFIT (+1.30)"},
+])
+st.dataframe(mock_history, use_container_width=True)
+
+# 6. FITUR BARU: TEXT RUNNING BERITA FUNDAMENTAL DI BAGIAN PALING BAWAH
+st.markdown("""
+    <div class='ticker-wrap'>
+        <div class='ticker'>
+            ⚠️ BREAKING NEWS: Investor bersiap menghadapi rilis data inflasi Amerika Serikat (CPI) malam ini --- 🏦 Bank Sentral Eropa (ECB) mengisyaratkan pemotongan suku bunga lanjutan jika inflasi stabil --- 📈 Ketegangan geopolitik global memicu kenaikan aset safe-haven Emas (XAUUSD) ke level resistensi baru --- 🇺🇸 Indeks Dolar (DXY) bergerak sideways menjelang pidato ketua The Fed.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
